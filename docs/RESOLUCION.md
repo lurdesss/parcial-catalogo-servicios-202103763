@@ -52,7 +52,7 @@ Hash scrypt con sal (Werkzeug); sesión en servidor (tabla `user_sessions`), coo
 
 ## 6. Evidencias de las tres técnicas
 - Context engineering: `AGENTS.md`, `docs/contexto/` (índice por fase, 2 actualizaciones justificadas en `CAMBIOS.md`).
-- Prompt engineering: `docs/prompts/` — **incompleto: se usaron realmente los prompts 01, 03, 04, 05a, 05b, 06 y 07a; el prompt 07b queda pendiente y no se presenta como usado.**
+- Prompt engineering: `docs/prompts/` — se usaron realmente todos los prompts (01, 03, 04, 05a→05b, 06, 07a→07b), con herramienta, fecha, comprobación y decisión en cada archivo.
 - Harness engineering: `docs/evidencias/harness-ciclo-01..03.md`, `scripts/check.sh`, `smoke.py`, `persistence_check.sh`, límites en AGENTS.md §3.
 Commits: el historial de Git del repositorio (`git log`); el desarrollo no se versionó por fase, por lo que no hay un commit por cada versión del contexto.
 
