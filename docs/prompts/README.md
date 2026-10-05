@@ -4,7 +4,7 @@
 |---|---|---|---|---|
 | 1 | `01-construccion-inicial.md` | Construcción inicial (modelo, auth, importación, Docker) | **Usado (real)** | — |
 | 2 | `03-analisis-excel.md` | Análisis del Excel | **Usado (real)** | Sin cambios de código; confirmó 12/46, filas 42/67 y SE.12; nuevo: espacio en I5 |
-| 3 | `04-modelo-datos.md` | Diseño del modelo | Pendiente de ejecutar | — |
+| 3 | `04-modelo-datos.md` | Diseño del modelo | **Usado (real)** | Sin cambios; `alembic check` OK; reglas solo-app declaradas |
 | 4 | `05a` → `05b` | Autenticación | Pendiente de ejecutar | **Mejora 1**: v1 genérico → v2 estructurado |
 | 5 | `06-importador-casos-borde.md` | Importación | Pendiente de ejecutar | — |
 | 6 | `07a` → `07b` | Pruebas / Docker | Pendiente de ejecutar | **Mejora 2**: v1 genérico → v2 estructurado |
