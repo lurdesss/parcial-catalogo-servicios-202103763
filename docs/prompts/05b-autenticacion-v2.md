@@ -1,7 +1,7 @@
 # Prompt 05b — Autenticación, revisión (VERSIÓN 2, mejorada)
 - **Tema:** autenticación · **Iteración de mejora n.º 1: prompt revisado**
-- **Estado:** PENDIENTE DE EJECUTAR (no cuenta como evidencia hasta completar los campos «REAL»).
-- **Herramienta / modelo / versión / fecha de uso (REAL):** COMPLETAR al ejecutarlo (p. ej. Claude en claude.ai, modelo mostrado en la interfaz, fecha).
+- **Estado:** USADO (real).
+- **Herramienta / modelo / versión / fecha de uso (REAL):** Claude Code (extensión de VS Code), modelo Claude Opus 5.5 (`claude-opus-5-5`), 2026-10-04 ~22:45. Ejecutado después de 05a con el contexto ampliado (`security.py`, `auth.py`, `org.py`, `config.py`, `serializers.py`, `tests/test_auth.py`).
 - **Cambios respecto a 05a (buenas prácticas aplicadas):** rol definido, contexto y requisitos explícitos, lista de amenazas a revisar, restricciones, formato de salida, criterio de aceptación y petición de pruebas.
 - **Contexto a adjuntar:** `app/security.py`, `app/api/auth.py`, `app/api/org.py`, `tests/test_auth.py`, `docs/contexto/01-reglas-de-negocio.md`.
 
@@ -27,5 +27,18 @@ Requisitos del proyecto: login local usuario/correo + contraseña validado contr
 <criterio_de_aceptacion>Todo hallazgo es reproducible con una petición HTTP o una prueba; sin recomendaciones genéricas.</criterio_de_aceptacion>
 ```
 
-## Resultado comprobado — COMPLETAR
-(comparar con 05a: qué mejoró; qué hallazgos se confirmaron ejecutando una prueba/petición, cuáles eran falsos positivos; commit)
+## Resultado comprobado
+**Veredicto:** no se encontraron defectos reales que incumplan los requisitos. Las amenazas pedidas están mitigadas en el servidor; las mejoras pendientes son opcionales (fuerza bruta, cookie `Secure` por defecto). Se añadieron 2 pruebas que antes faltaban.
+
+| # | Hallazgo | Archivo/función | Severidad | Cómo reproducirlo | Corrección mínima |
+|---|---|---|---|---|---|
+| 1 | Sin límite de intentos de login (fuerza bruta) | `auth.py::login` | mejora opcional (ya declarada como limitación) | N peticiones `POST /api/auth/login` con clave errónea → siempre 401, nunca bloqueo | contador por usuario/IP; fuera de alcance |
+| 2 | `SESSION_COOKIE_SECURE` es falso por defecto | `config.py` l. 18 | mejora opcional | el `Set-Cookie` del login no lleva `Secure` | `COOKIE_SECURE=1` cuando se sirva por HTTPS (ya configurable) |
+| 3 | El cambio de contraseña revoca las sesiones del usuario: **mitigado, pero sin prueba** | `org.py::update_user` (`revoke_user_sessions`) | — | prueba nueva `test_cambio_de_password_revoca_sesiones` | — |
+| 4 | Fijación de sesión: **mitigada** (`start_session` hace `session.clear()` y emite un token nuevo; una cookie impuesta no existe en `user_sessions`), pero sin prueba | `security.py::start_session` | — | prueba nueva `test_login_emite_sesion_nueva_sin_fijacion` | — |
+
+Descartados con explicación (no aplican): enumeración por tiempo (`authenticate` compara contra `_DUMMY_HASH` y devuelve el mismo 401); fuga de `password_hash` (`user_dict` no lo incluye; `test_P03` lo afirma); escalada de privilegios (`guard_request` exige admin en todo POST/PUT/PATCH/DELETE salvo logout; `test_P03` lo recorre); CSRF (`hmac.compare_digest`, `test_csrf_requerido_en_escrituras`); `SECRET_KEY` vacía (`app/__init__.py` aborta el arranque); usuario desactivado (`_load_session` lo rechaza; `test_P02`).
+
+**Comparación con 05a:** 05a dijo «está bien» con consejos genéricos; 05b recorrió cada amenaza con archivo y función, separó defecto de mejora, descartó riesgos explicando por qué y produjo pruebas concretas.
+
+**Comprobación:** se agregaron ambas pruebas a `tests/test_auth.py` y se ejecutó `docker compose --profile test run --rm --build tests` → ruff OK, **33 passed** (antes 31). Ningún hallazgo resultó ser falso positivo y no se encontró ningún defecto que requiriera cambiar código de la aplicación.

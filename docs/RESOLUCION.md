@@ -52,7 +52,7 @@ Hash scrypt con sal (Werkzeug); sesión en servidor (tabla `user_sessions`), coo
 
 ## 6. Evidencias de las tres técnicas
 - Context engineering: `AGENTS.md`, `docs/contexto/` (índice por fase, 2 actualizaciones justificadas en `CAMBIOS.md`).
-- Prompt engineering: `docs/prompts/` — **incompleto: se usaron realmente los prompts 01, 03, 04 y 05a; los prompts 05b–07b quedan como plantillas pendientes y no se presentan como usados.**
+- Prompt engineering: `docs/prompts/` — **incompleto: se usaron realmente los prompts 01, 03, 04, 05a y 05b; los prompts 06, 07a y 07b quedan como plantillas pendientes y no se presentan como usados.**
 - Harness engineering: `docs/evidencias/harness-ciclo-01..03.md`, `scripts/check.sh`, `smoke.py`, `persistence_check.sh`, límites en AGENTS.md §3.
 Commits: el historial de Git del repositorio (`git log`); el desarrollo no se versionó por fase, por lo que no hay un commit por cada versión del contexto.
 
@@ -89,6 +89,7 @@ Commits: el historial de Git del repositorio (`git log`); el desarrollo no se ve
 | 2026-10-04 | `sh scripts/setup_eval.sh` | Docker | ver nota | admin_demo y consulta_demo creados; importación #1: creados=58, observados=8, N1=12, N2=46, coincide=true |
 | 2026-10-04 | `docker compose exec -T -e EXPECT_REAL_CONTROL=1 app python scripts/smoke.py flow` | Docker, Excel real | ver nota | todos OK; control 12 N1 / 46 N2; 2.ª importación idempotente |
 | 2026-10-04 | `sh scripts/persistence_check.sh` | Docker | ver nota | P12 OK: el marcador sobrevivió a `docker compose restart` |
+| 2026-10-04 | `docker compose --profile test run --rm --build tests` (tras prompt 05b, +2 pruebas de auth) | Docker | ver nota | All checks passed · **33 passed** |
 
 Nota de commit: las ejecuciones se hicieron sobre el árbol de trabajo publicado en el primer commit completo del repositorio (posterior a `32df9b4`, que solo contenía el README); no hubo commits intermedios por fase. El fallo de `smoke.py` se debió al orden de ejecución (requiere `setup_eval.sh` antes) y está documentado en `docs/evidencias/harness-ciclo-04.md`.
 

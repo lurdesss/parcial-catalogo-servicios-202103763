@@ -66,3 +66,24 @@ def test_P03_consulta_lee_pero_no_modifica(viewer, org):
     ]:
         r = getattr(viewer, method)(url, json=body) if body is not None else getattr(viewer, method)(url)
         assert r.status_code == 403, (method, url, r.status_code)
+
+
+def test_cambio_de_password_revoca_sesiones(app, org, admin):
+    v = Client(app)
+    v.login(VIEWER)
+    assert v.get("/api/auth/me").status_code == 200
+    assert admin.put(f"/api/users/{org['viewer']}", json={"password": "NuevaClave123"}).status_code == 200
+    assert v.get("/api/auth/me").status_code == 401
+    assert Client(app).login(VIEWER).status_code == 401
+    assert Client(app).login((VIEWER[0], "NuevaClave123")).status_code == 200
+
+
+def test_login_emite_sesion_nueva_sin_fijacion(app, org):
+    cl = Client(app)
+    cl.c.set_cookie("catalogo_session", "valor-impuesto-por-atacante")
+    assert cl.get("/api/auth/me").status_code == 401
+    cl.login(ADMIN)
+    first = cl.c.get_cookie("catalogo_session").value
+    assert first != "valor-impuesto-por-atacante"
+    cl.login(ADMIN)
+    assert cl.c.get_cookie("catalogo_session").value != first
