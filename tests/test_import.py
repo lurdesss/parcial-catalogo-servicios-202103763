@@ -145,3 +145,17 @@ def test_P08_archivo_original_se12_y_filas_huerfanas(app):
     assert sorted(o.row_ref for o in orphans) == ["fila 42", "fila 67"]      # huecos entre combinaciones: no se asignan
     assert db.session.scalar(db.select(db.func.count()).select_from(ServiceL2).where(ServiceL2.review_status == "revisar")) == 3
     assert db.session.scalar(db.select(db.func.count()).select_from(ServiceL2).where(ServiceL2.activo_excel == "N")) == 1
+
+
+def test_filas_despues_de_101_no_se_pierden_en_silencio(app, tmp_path):
+    from openpyxl import load_workbook
+    p = build(tmp_path / "extra.xlsx")
+    wb = load_workbook(p)
+    ws = wb["Servicios Externos"]
+    for i, v in enumerate(["SE.13", "Nuevo N1", "SE.13.1", "Servicio agregado al final", "S"], start=1):
+        ws.cell(105, i, v)
+    wb.save(p)
+    run = run_import(p, app.config["IMPORT_MAPPING"])
+    assert run.status == "ok"
+    assert _l2("SE.13.1") is None                       # fuera del rango declarado: no se importa
+    assert "fila_fuera_de_rango" in _kinds(run.id)      # pero queda observado, no se pierde en silencio

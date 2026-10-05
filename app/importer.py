@@ -264,6 +264,11 @@ def read_groups(ctx, grid):
             v = clean(cells[c], keep_number=c in (K, L))
             if v is not None:
                 g["f"][c].append((r, v))
+    for r in range(DATA_LAST + 1, LIST_FIRST - 1):   # entre los datos y el título de las listas (fila 111)
+        payload = [col_letter(c) for c in range(1, 13) if clean(grid.value(r, c)) is not None]
+        if payload:
+            ctx.observe("fila_fuera_de_rango", f"Fila {r} trae datos en {', '.join(payload)} fuera del rango de datos "
+                        f"{DATA_FIRST}-{DATA_LAST}; no se importó.", row_ref=f"fila {r}")
     return l1, l2
 
 
