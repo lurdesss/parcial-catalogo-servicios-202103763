@@ -1,0 +1,7 @@
+line-length = 170
+target-version = "py312"
+extend-exclude = ["migrations/versions"]
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E701", "E702", "E731"]

@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+**/__pycache__
+*.pyc
+.venv
+venv
+*.db
+.pytest_cache
+.ruff_cache
+node_modules
+docs
+tests/ui/node_modules

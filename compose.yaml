@@ -1,0 +1,88 @@
+name: catalogo-servicios
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-catalogo}
+      POSTGRES_USER: ${POSTGRES_USER:-catalogo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      target: runtime
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-catalogo}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-catalogo}
+      RUN_MIGRATIONS: "1"
+      FLASK_APP: app:create_app
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/srv/data:ro   # el Excel original se monta en solo lectura: la app no puede modificarlo
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---- Pruebas aisladas: base de datos efímera propia (sin volumen). Uso: docker compose --profile test run --rm tests
+  db_test:
+    profiles: ["test"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: catalogo_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d catalogo_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  tests:
+    profiles: ["test"]
+    build:
+      context: .
+      target: test
+    environment:
+      TEST_DATABASE_URL: postgresql+psycopg://test:test@db_test:5432/catalogo_test
+    depends_on:
+      db_test:
+        condition: service_healthy
+
+  # ---- Prueba de interfaz (opcional): docker compose --profile ui run --rm ui_tests   (requiere app en marcha y cuentas de evaluación)
+  ui_tests:
+    profiles: ["ui"]
+    image: node:22-alpine
+    working_dir: /work/tests/ui
+    env_file: .env
+    environment:
+      BASE: http://app:8000
+      STATIC_JS: /work/app/static/app.js
+    volumes:
+      - ./tests/ui:/work/tests/ui
+      - ./app/static:/work/app/static:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    command: sh -c "npm install --no-audit --no-fund && node ui_smoke.js"
+
+volumes:
+  pgdata:

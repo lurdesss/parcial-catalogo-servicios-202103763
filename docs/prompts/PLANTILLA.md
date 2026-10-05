@@ -1,0 +1,11 @@
+# Plantilla de registro de prompt
+- **N.º / tema:**  (análisis del Excel · modelo · autenticación · importación · pruebas/Docker)
+- **Herramienta, modelo y versión · fecha de uso:**
+- **Objetivo:**
+- **Contexto suministrado:** (archivos/fragmentos)
+- **Instrucciones:** (texto del prompt, o extracto relevante)
+- **Restricciones:**
+- **Salida esperada:**
+- **Criterio de aceptación:** (cómo se comprobó)
+- **Resultado real y observaciones:**
+- **Iteración (si aplica):** prompt inicial → problema observado → prompt revisado → resultado comprobado

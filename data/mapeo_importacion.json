@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "descripcion": "Reglas de resolución de conflictos de la importación. El archivo Excel original NO se modifica.",
+  "nombres_canonicos": {
+    "SE.12": {
+      "nombre": "Suministrar Analitica",
+      "justificacion": "En el archivo real, B99 = «Suministrar Analitica» y B100 = «Mantener Tableros de Control» para el mismo COD.N1 SE.12. «Mantener Tableros de Control» ya es el nombre del servicio N2 SE.12.3 (D101), por lo que B100 parece un valor desplazado/copiado del nivel 2; en cambio «Suministrar Analitica» es el nombre más general y es el de la primera fila. Se elige «Suministrar Analitica»; ambos valores quedan como evidencia en la observación y en source_notes. Verificado contra CatalogoServicios.xlsx (SHA-256 de3b478a…cf0)."
+    }
+  }
+}
