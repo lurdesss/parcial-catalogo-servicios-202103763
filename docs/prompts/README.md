@@ -7,7 +7,7 @@
 | 3 | `04-modelo-datos.md` | Diseño del modelo | **Usado (real)** | Sin cambios; `alembic check` OK; reglas solo-app declaradas |
 | 4 | `05a` → `05b` | Autenticación | **Usado (real)** (05a y 05b) | **Mejora 1**: v1 genérico → v2 estructurado |
 | 5 | `06-importador-casos-borde.md` | Importación | **Usado (real)** | Defecto confirmado (filas >101 sin observación) → corregido + prueba |
-| 6 | `07a` → `07b` | Pruebas / Docker | Pendiente de ejecutar | **Mejora 2**: v1 genérico → v2 estructurado |
+| 6 | `07a` → `07b` | Pruebas / Docker | 07a **Usado (real)**; 07b pendiente | **Mejora 2**: v1 genérico → v2 estructurado |
 
 ## Cómo usar este registro (para que la evidencia sea real)
 1. Adjunte los archivos indicados y pegue el prompt **tal cual**. Ejecute siempre la versión `a` antes de la `b`.
