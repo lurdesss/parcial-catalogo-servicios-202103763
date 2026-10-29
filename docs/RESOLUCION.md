@@ -2,11 +2,13 @@
 
 > Estado Parcial 2: las pruebas se ejecutaron con el **Excel real**, primero en un sandbox sin Docker (SQLite y PostgreSQL 16 con apt) y el 2026-10-04 también con **Docker** (Docker 29.7.2, Compose v5.4.0, Windows 11): servicio `tests`, `smoke.py flow` y `persistence_check.sh` salieron con código 0 (§8).
 >
-> Estado Parcial 3 (2026-10-29): suite completa verificada en local sin Docker (`pytest -q` → 58 passed, `ruff check .`
-> → sin errores) y los comandos nuevos (`generate-cmdb`, `seed-servicedesk-demo`) verificados de forma real y
-> repetida (idempotencia confirmada con conteos de base de datos). **La verificación con Docker quedó pendiente**
-> porque el daemon no estaba activo durante la construcción — ver `docs/PRUEBAS.md` §3 para el detalle y los comandos
-> exactos a ejecutar antes de la entrega.
+> Estado Parcial 3 (2026-10-29): suite completa verificada primero en local sin Docker (`pytest -q` → 58 passed,
+> `ruff check .` → sin errores) y los comandos nuevos (`generate-cmdb`, `seed-servicedesk-demo`) verificados de forma
+> real y repetida (idempotencia confirmada con conteos de base de datos). **Verificación completa con Docker también
+> realizada** en la misma sesión (Docker 29.2.0 / Compose v5.0.2): `docker compose --profile test run` → 58 passed
+> sobre PostgreSQL real; `setup_eval.sh`, `smoke.py flow`, `persistence_check.sh` y `ui_tests` en verde, tras corregir
+> dos fallos reales encontrados en el propio arnés de verificación — ver `docs/PRUEBAS.md` §3 y
+> `docs/evidencias/harness-ciclo-08.md`.
 
 ## 1. Problema, alcance y supuestos
 
@@ -134,9 +136,9 @@ implementa la versión P18 ampliada, que incluye a la anterior).
 Nota de commit: las ejecuciones se hicieron sobre el árbol de trabajo publicado en el primer commit completo del repositorio (posterior a `32df9b4`, que solo contenía el README); no hubo commits intermedios por fase. El fallo de `smoke.py` se debió al orden de ejecución (requiere `setup_eval.sh` antes) y está documentado en `docs/evidencias/harness-ciclo-04.md`.
 
 Fallos encontrados y corregidos: `docs/evidencias/harness-ciclo-01..03.md` (Parcial 2) y
-`docs/evidencias/harness-ciclo-05..07.md` (Parcial 3). Resultados reales de Parcial 3 (pytest, ruff, CLI del
-generador de CMDB y de la siembra de Service Desk, con fechas y commits): `docs/PRUEBAS.md` §2. **Verificación con
-Docker pendiente** antes de la entrega — comandos exactos en `docs/PRUEBAS.md` §3.
+`docs/evidencias/harness-ciclo-05..08.md` (Parcial 3). Resultados reales de Parcial 3 (pytest, ruff, CLI del
+generador de CMDB y de la siembra de Service Desk, y verificación completa con Docker, con fechas y commits):
+`docs/PRUEBAS.md` §2–§3.
 
 ## 9. Docker, persistencia y recuperación
 Ver README. Volumen `pgdata`; `docker compose down` conserva datos; `down -v` es el reinicio destructivo. El arranque espera a PostgreSQL (healthcheck + `depends_on: service_healthy` + reintentos de migración). El Excel se monta `:ro`.
@@ -154,8 +156,10 @@ la política de apagado/reinicio normal vs. destructivo.
 - Reflexión: la IA produjo código funcional pero sus propias pruebas contenían una expectativa errónea (ciclo 01); un bug de DOM solo apareció al ejecutar la interfaz (ciclo 02) y un bloqueo solo en PostgreSQL (ciclo 03). Decisiones humanas: no inventar el contenido del Excel, bajas lógicas con cascada explícita y tratar el texto del Excel como dato no confiable.
 
 ### Parcial 3
-- **Verificación con Docker pendiente** (daemon inactivo durante la construcción; sí instalado). Es la limitación
-  más importante a resolver antes de entregar — ver `docs/PRUEBAS.md` §3.
+- Verificación con Docker completada el 2026-10-29 (`docs/PRUEBAS.md` §3): 58 passed sobre PostgreSQL real,
+  `setup_eval.sh`/`smoke.py`/`persistence_check.sh`/`ui_tests` en verde. No se probó el clon limpio desde la etiqueta
+  `parcial-v3.0` (se crea al cerrar esta entrega) ni un reinicio del equipo anfitrión completo (solo
+  `docker compose restart`).
 - Sin pausas explícitas de SLA en el tablero de indicadores (decisión documentada en `docs/PROCESOS.md` §5); el
   tiempo de resolución se mide de extremo a extremo.
 - La jerarquía de clasificación de CI es una decisión de proyecto (ninguna fuente entregada la define por completo),

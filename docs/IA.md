@@ -33,10 +33,11 @@ Se reutilizó el harness de Parcial 2 sin reemplazarlo (`AGENTS.md` §4), amplia
   de prueba aislados.
 - Datos de prueba controlados: `tests/conftest.py` siembra `reference_data.seed_orm()` sobre una BD SQLite temporal
   por prueba (o PostgreSQL efímero en Docker), nunca sobre datos reales.
-- **Pendiente antes de la entrega final:** verificación completa con Docker (`docker compose --profile test run`,
-  `scripts/setup_eval.sh`, `scripts/persistence_check.sh`) — el daemon de Docker Desktop no estaba activo durante
-  esta sesión de construcción. La verificación local sin Docker (`ruff check .` + `pytest -q`, 58/58) sí se completó
-  (ver `docs/prompts/15-pruebas-docker.md`).
+- Verificación local sin Docker completada primero (`ruff check .` + `pytest -q`, 58/58 — `docs/prompts/15…`); la
+  verificación completa con Docker se completó después, en la misma sesión, una vez reiniciado el daemon (ver
+  `docs/PRUEBAS.md` §3 y `docs/evidencias/harness-ciclo-08.md`): `docker compose --profile test run` → 58 passed
+  sobre PostgreSQL real; `setup_eval.sh`, `smoke.py flow`, `persistence_check.sh` y `ui_tests` todos en verde tras
+  corregir dos fallos reales encontrados en el propio arnés de verificación (no en la aplicación).
 
 ## 4. Loop Engineering
 Tres ciclos completos **tarea → cambio propuesto → ejecución → evaluación → corrección → nueva verificación**, ninguno
@@ -47,6 +48,7 @@ introducido deliberadamente (los tres surgieron de ejecutar los comandos reales)
 | `docs/evidencias/harness-ciclo-05.md` | **Defecto funcional** | `service_l2_id` exigido a un proceso (`nuevos_servicios`) que por definición aún no tiene servicio | `8eb3d95` |
 | `docs/evidencias/harness-ciclo-06.md` | **Datos/permisos** | Siembra masiva usaba un único actor para toda una secuencia de transiciones con permisos distintos | `8eb3d95` |
 | `docs/evidencias/harness-ciclo-07.md` | Verificación de diseño vía 3 fallos reales de `pytest` | Confirma que "no ejecutar cambio sin aprobación" está garantizado en dos capas; corrige 2 defectos de configuración de prueba | `5423e6d` |
+| `docs/evidencias/harness-ciclo-08.md` | **Harness/datos** | Dos fallos reales en la primera verificación completa con Docker/PostgreSQL: un control de humo asumía que el catálogo no crecía (sí puede, por `nuevos_servicios` aprobados) y un ticket marcador no incluía un `service_l2_id` obligatorio | pendiente de commit (ver `git log` al cierre de esta fase) |
 
 ## 5. Los dos grafos (para la defensa)
 - **Grafo 1 — dependencias de CI** (`app/graph_cmdb.py`): nodos = `devices`, aristas = `device_relations` con tipo.

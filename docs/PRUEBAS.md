@@ -43,17 +43,20 @@
 
 Las tablas de Parcial 2 (§8 de `docs/RESOLUCION.md`) se mantienen como evidencia histórica y no se repiten aquí.
 
-## 3. Pendiente antes de la entrega (declarado explícitamente, no omitido)
-El daemon de Docker Desktop no estuvo activo en el equipo durante esta sesión de construcción
-(`docker ps` → *"failed to connect to the docker API"*); Docker **sí** está instalado (29.2.0 / Compose v5.0.2). Antes
-de entregar, ejecutar y registrar aquí:
-```
-docker compose up --build -d
-sh scripts/setup_eval.sh
-docker compose --profile test run --rm --build tests     # ruff + pytest P01–P18 sobre PostgreSQL efímero
-docker compose exec -T app python scripts/smoke.py flow  # incluye los chequeos nuevos de CMDB/Service Desk
-sh scripts/persistence_check.sh                           # P18 con reinicio real de contenedores
-docker compose --profile ui run --rm ui_tests              # UI (jsdom), opcional
-```
-Esto reconfirma sobre PostgreSQL real lo ya verificado sobre SQLite, y es la única verificación que falta para
-declarar el ciclo de harness de Parcial 3 completo de extremo a extremo con Docker.
+## 3. Verificación completa con Docker (2026-10-29, Docker 29.2.0 / Compose v5.0.2, Windows)
+El daemon de Docker Desktop no estaba activo al escribir §1–§2 (declarado en su momento); se reinició durante la
+misma sesión y se completó la verificación real. Dos fallos reales encontrados y corregidos en el propio arnés de
+verificación (no en la aplicación) — detalle completo en `docs/evidencias/harness-ciclo-08.md`.
+
+| Comando | Resultado |
+|---|---|
+| `docker compose up --build -d` | `app` y `db` healthy; migraciones 0001+0002 aplicadas sobre PostgreSQL 16 real |
+| `sh scripts/setup_eval.sh` | 5 cuentas; importación coincide=true (12/46); CMDB `seed=42`: 5000 creados; Service Desk: 7 colas, 35 tickets nuevos |
+| `docker compose --profile test run --rm --build tests` | ruff: All checks passed · pytest: **58 passed** en 65.74 s sobre PostgreSQL efímero (`db_test`) · `CONTROLES OK` (exit 0) |
+| `docker compose exec -T app python scripts/smoke.py flow` (1.ª vez) | **falló** `catálogo consultable` (48 vs. 46 esperado) — ver harness-ciclo-08 |
+| ídem, tras corregir `scripts/smoke.py` (`total >= n2_codes`) | todos los controles `[OK]`, exit 0 (incluye los 7 procesos, CMDB, tickets, tablero) |
+| `sh scripts/persistence_check.sh` (1.ª vez) | **falló** al crear el ticket marcador (`service_l2_id` obligatorio no provisto) — ver harness-ciclo-08 |
+| ídem, tras corregir `scripts/smoke.py::marker_write` | marcadores de organización, CMDB y ticket sobreviven a `docker compose restart` real: `P12/P18 OK` |
+| `docker compose --profile ui run --rm ui_tests` | **todas** las vistas (incluidas las 8 nuevas de Parcial 3) cargan sin error de JS, para admin y consulta; `UI OK` — sin modificar `ui_smoke.js` (ya era genérico sobre `VIEWS`) |
+
+Con esto, el ciclo de harness de Parcial 3 queda verificado de extremo a extremo con Docker, no solo con SQLite local.

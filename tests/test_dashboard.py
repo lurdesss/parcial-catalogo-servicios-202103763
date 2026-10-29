@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app.extensions import db
-from app.models import Process, Queue, ServiceL1, ServiceL2, Ticket, TicketHistory
+from app.models import Process, Queue, ServiceL1, ServiceL2, Ticket, TicketHistory, utcnow
 
 
 def _svc():
@@ -18,7 +18,7 @@ def test_P17_indicadores_con_datos_controlados(admin, org):
                   targets={"alta": 60, "media": 240, "baja": 1440})
     db.session.add(queue); db.session.flush()
     svc = _svc()
-    now = datetime.utcnow()
+    now = utcnow()
 
     # Ticket 1: resuelto en 30 min, objetivo 60 (alta) -> cumple
     t1 = Ticket(number="TCK-D1", title="D1", ticket_type="incidente", process_id=process.id, queue_id=queue.id,

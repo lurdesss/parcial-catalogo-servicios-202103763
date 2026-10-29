@@ -1,5 +1,6 @@
 #!/bin/sh
-# P12: reinicia contenedores SIN borrar volúmenes y comprueba que los datos persisten. Solo requiere Docker Compose.
+# P12 (Parcial 2) / P18 (Parcial 3): reinicia contenedores SIN borrar volúmenes y comprueba que
+# catálogo, organización, CMDB y tickets persisten. Solo requiere Docker Compose.
 set -eu
 docker compose exec -T app python scripts/smoke.py marker-write
 docker compose restart
@@ -10,4 +11,4 @@ until docker compose exec -T app python scripts/smoke.py health >/dev/null 2>&1;
   sleep 2
 done
 docker compose exec -T app python scripts/smoke.py marker-verify
-echo "P12 OK: los datos persisten tras reiniciar (volumen pgdata intacto)."
+echo "P12/P18 OK: los datos persisten tras reiniciar (volumen pgdata intacto)."

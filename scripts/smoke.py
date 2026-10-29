@@ -70,7 +70,10 @@ def flow():
     if os.environ.get("EXPECT_REAL_CONTROL", "0") == "1":
         check("control 12 N1 / 46 N2", control.get("coincide") is True)
     st, page = a.call("GET", "/api/services/l2?per_page=1")
-    check("catálogo consultable", st == 200 and page["total"] == run2["n2_codes"], str(page.get("total")))
+    # >= y no ==: el proceso "nuevos_servicios" de Parcial 3 puede haber aprobado y creado
+    # servicios adicionales en el catálogo (seed-servicedesk-demo); el control de importación
+    # (n2_codes) sigue siendo exactamente 46, pero el catálogo total puede ser mayor.
+    check("catálogo consultable", st == 200 and page["total"] >= run2["n2_codes"], str(page.get("total")))
 
     # --- Parcial 3: Service Desk / CMDB -------------------------------------------------
     st, procesos = a.call("GET", "/api/processes")
@@ -100,8 +103,11 @@ def marker_write():
     else:
         st, q = a.call("POST", "/api/queues", {"code": "Q-PERSISTENCIA", "name": "Marcador", "process_id": proc["id"]})
         qid = q.get("id")
+    st, services = a.call("GET", "/api/services/l2?per_page=1")
+    svc_id = services["items"][0]["id"] if st == 200 and services["items"] else None
+    check("servicio disponible para el marcador de ticket", svc_id is not None, str(services))
     st, tk = a.call("POST", "/api/tickets", {"process_code": "incidentes", "title": "Marcador de persistencia",
-                                             "queue_id": qid, "detail": {"category": "I0"}})
+                                             "queue_id": qid, "service_l2_id": svc_id, "detail": {"category": "I0"}})
     check("marcador de ticket creado o ya existente", st in (201, 409), str(tk))
 
 
