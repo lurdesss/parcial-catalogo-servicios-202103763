@@ -2,6 +2,8 @@
 // Todo el contenido proveniente del servidor (incluido el del Excel) se inserta con nodos de texto, nunca con innerHTML.
 const state = { user: null, csrf: null, view: 'services' };
 const isAdmin = () => state.user && state.user.role === 'admin';
+const hasServiceRole = (code) => !!(state.user && state.user.service_roles && state.user.service_roles.includes(code));
+const isAgente = () => isAdmin() || hasServiceRole('agente');
 
 function h(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -304,6 +306,327 @@ function importView() {
   return root;
 }
 
+// ------------------------------------------------------------------------------ CMDB
+const CICLASSES_CFG = { title: 'Clases de CI', path: '/cmdb/ci-classes',
+  cols: [['code', 'Código'], ['name', 'Nombre'], ['parent_name', 'Clase padre'], ['requires_ip', 'Requiere IP', (i) => (i.requires_ip ? 'Sí' : 'No')], activeCol],
+  fields: [{ n: 'code', l: 'Código', req: 1 }, { n: 'name', l: 'Nombre', req: 1 },
+    { n: 'parent_id', l: 'Clase padre', type: 'select', optionsFn: () => loadOptions('/cmdb/ci-classes', codeName, { per_page: 200 }) },
+    { n: 'requires_ip', l: 'Requiere IP', type: 'checkbox' }, { n: 'is_active', l: 'Activo', type: 'checkbox', editOnly: 1 }] };
+const LOCATIONS_CFG = { title: 'Ubicaciones', path: '/cmdb/locations', cols: [['code', 'Código'], ['name', 'Nombre'], activeCol],
+  fields: [{ n: 'code', l: 'Código', req: 1 }, { n: 'name', l: 'Nombre', req: 1 }, { n: 'is_active', l: 'Activo', type: 'checkbox', editOnly: 1 }] };
+
+function devicesView() {
+  const root = h('div'); const flash = h('div'); const list = h('div'); let page = 1;
+  const say = (k, t) => flash.replaceChildren(msg(k, t));
+  const f = {
+    q: h('input', { type: 'search', placeholder: 'Etiqueta o nombre…' }),
+    ci_class_id: h('select'), status: h('select', {}, h('option', { value: '' }, 'Estado: todos'),
+      ...['activo', 'inactivo', 'retirado'].map((s) => h('option', { value: s }, s))),
+  };
+  loadOptions('/cmdb/ci-classes', codeName, { per_page: 200 }).then((opts) =>
+    f.ci_class_id.replaceChildren(h('option', { value: '' }, 'Clase: todas'), ...opts.map(([v, t]) => h('option', { value: v }, t)))).catch(() => {});
+
+  async function load() {
+    try {
+      const d = await api('GET', '/cmdb/devices?' + qs({ ...Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])), page, per_page: 25 }));
+      const rows = d.items.map((dev) => h('tr', { class: 'clickable', onclick: () => ficha(dev.id) },
+        h('td', {}, dev.asset_tag), h('td', {}, dev.name), h('td', {}, dev.ci_class ? dev.ci_class.name : '—'),
+        h('td', {}, dev.location ? dev.location.name : '—'), h('td', {}, dev.owner ? dev.owner.name : '—'),
+        h('td', {}, dev.status), h('td', {}, dev.ip_address || '—'), h('td', {}, badge(dev.is_active))));
+      list.replaceChildren(h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {},
+        ['Etiqueta', 'Nombre', 'Clase', 'Ubicación', 'Propietario', 'Estado', 'IP', 'Activo'].map((t) => h('th', {}, t)))), h('tbody', {}, rows))),
+      h('div', { class: 'pager' }, h('button', { class: 'btn', disabled: page <= 1, onclick: () => { page--; load(); } }, '‹ Anterior'),
+        `Página ${d.page} de ${d.pages} · ${d.total} dispositivo(s)`, h('button', { class: 'btn', disabled: page >= d.pages, onclick: () => { page++; load(); } }, 'Siguiente ›')));
+    } catch (e) { list.replaceChildren(msg('error', e.message)); }
+  }
+
+  async function ficha(id) {
+    const [dev, rels, impacto, servicios] = await Promise.all([
+      api('GET', '/cmdb/devices/' + id), api('GET', `/cmdb/devices/${id}/relaciones`),
+      api('GET', `/cmdb/devices/${id}/impacto`), api('GET', `/cmdb/devices/${id}/servicios`)]);
+    const row = (k, v) => [h('dt', {}, k), h('dd', {}, v == null || v === '' ? '—' : v)];
+    const attrs = Object.entries(dev.attributes || {}).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
+    const m = openModal(`${dev.asset_tag} · ${dev.name}`, h('div', {},
+      h('dl', {}, row('Clase', dev.ci_class && dev.ci_class.name), row('Estado', dev.status), row('Activo', dev.is_active ? 'Sí' : 'No'),
+        row('Ubicación', dev.location && dev.location.name), row('Propietario', dev.owner && dev.owner.name),
+        row('IP', dev.ip_address), row('N.º de serie', dev.serial_number), row('Atributos técnicos', attrs)),
+      h('h3', {}, 'Relaciones técnicas (Grafo CMDB)'),
+      h('ul', {}, rels.map((r) => h('li', {}, `${r.from_device.asset_tag} —${r.relation_type}→ ${r.to_device.asset_tag}`))),
+      isAdmin() ? h('div', { class: 'bar' },
+        h('button', { class: 'btn', onclick: () => relacionForm(dev, () => { m.close(); ficha(id); }) }, '+ Agregar relación')) : null,
+      h('h3', {}, 'Recorrido de dependencias (impacto si este CI falla)'),
+      h('ul', {}, impacto.dispositivos_relacionados.map((d2) => h('li', {}, `profundidad ${d2.profundidad} · ${d2.relation_type} · CI #${d2.device_id}`))),
+      h('p', { class: 'muted' }, impacto.servicios_potencialmente_afectados.length
+        ? 'Servicios potencialmente afectados (no implica interrupción confirmada):' : 'No hay servicios vinculados a este CI ni a sus dependientes.'),
+      h('ul', {}, impacto.servicios_potencialmente_afectados.map((s) => h('li', {}, `${s.code} · ${s.name}`))),
+      h('h3', {}, 'Servicios vinculados'),
+      h('ul', {}, servicios.map((s) => h('li', {}, `${s.code} · ${s.name}`))),
+      h('div', { class: 'bar' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Cerrar'))));
+  }
+
+  function relacionForm(dev, onDone) {
+    formModal({
+      title: `Nueva relación desde ${dev.asset_tag}`,
+      fields: [
+        { n: 'to_device_id', l: 'CI relacionado (etiqueta o nombre)', req: 1, type: 'select',
+          optionsFn: async () => (await api('GET', '/cmdb/devices?per_page=200')).items.filter((x) => x.id !== dev.id).map((x) => [x.id, `${x.asset_tag} · ${x.name}`]) },
+        { n: 'relation_type', l: 'Tipo de relación', req: 1, type: 'select', str: 1,
+          options: [['depende_de', 'depende_de (no admite ciclos)'], ['alojado_en', 'alojado_en (no admite ciclos)'], ['conectado_a', 'conectado_a (admite ciclos)']] },
+      ],
+      onSubmit: async (p) => { await api('POST', `/cmdb/devices/${dev.id}/relaciones`, p); onDone(); },
+    });
+  }
+
+  for (const el of Object.values(f)) el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => { page = 1; load(); });
+  root.append(h('h2', {}, 'CMDB — Dispositivos'),
+    h('p', { class: 'muted' }, 'Generados con `flask generate-cmdb` (reproducible por semilla; ver docs/MODELO.md).'), flash,
+    h('div', { class: 'bar' }, Object.values(f)), list);
+  load();
+  return root;
+}
+
+// ----------------------------------------------------------------------- colas (Service Desk)
+function queuesView() {
+  const root = h('div'); const flash = h('div'); const list = h('div');
+  const say = (k, t) => flash.replaceChildren(msg(k, t));
+  async function load() {
+    const d = await api('GET', '/queues?per_page=100');
+    const rows = d.items.map((qu) => h('tr', {}, h('td', {}, qu.code), h('td', {}, qu.name), h('td', {}, qu.process.name),
+      h('td', {}, qu.support_level), h('td', {}, badge(qu.is_active)),
+      h('td', {}, isAdmin() ? h('button', { class: 'btn', onclick: () => permisos(qu) }, 'Permisos') : null)));
+    list.replaceChildren(h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {},
+      ['Código', 'Nombre', 'Proceso', 'Nivel', 'Activa', ''].map((t) => h('th', {}, t)))), h('tbody', {}, rows))));
+  }
+  async function permisos(qu) {
+    const full = await api('GET', '/queues/' + qu.id);
+    const rows = full.permissions.map((p) => h('tr', {}, h('td', {}, p.principal_role || (p.principal_user && p.principal_user.name)),
+      ['can_view', 'can_work', 'can_transfer', 'can_approve', 'can_manage'].map((k) => h('td', {}, p[k] ? '✓' : '')),
+      h('td', {}, h('button', { class: 'btn danger', onclick: async () => { await api('DELETE', `/queues/${qu.id}/permisos/${p.id}`); m.close(); permisos(qu); } }, 'Quitar'))));
+    const add = h('button', { class: 'btn primary', onclick: () => formModal({
+      title: 'Agregar permiso', fields: [
+        { n: 'principal_role', l: 'Rol (o deje vacío y use usuario abajo)', type: 'select', str: 1,
+          options: [['admin', 'admin'], ['consulta', 'consulta'], ['solicitante', 'solicitante'], ['agente', 'agente'], ['aprobador', 'aprobador']] },
+        { n: 'principal_user_id', l: 'Usuario (alternativa a rol)', type: 'select', optionsFn: () => loadOptions('/users', (u) => `${u.name} (${u.username})`) },
+        { n: 'can_view', l: 'Consultar', type: 'checkbox' }, { n: 'can_work', l: 'Atender', type: 'checkbox' },
+        { n: 'can_transfer', l: 'Transferir', type: 'checkbox' }, { n: 'can_approve', l: 'Aprobar', type: 'checkbox' },
+        { n: 'can_manage', l: 'Administrar', type: 'checkbox' },
+      ], onSubmit: async (p) => { await api('POST', `/queues/${qu.id}/permisos`, p); m.close(); permisos(qu); },
+    }) }, '+ Agregar permiso');
+    const m = openModal(`Permisos de ${full.code}`, h('div', {}, h('div', { class: 'table-wrap' },
+      h('table', {}, h('thead', {}, h('tr', {}, ['Principal', 'Ver', 'Atender', 'Transferir', 'Aprobar', 'Administrar', ''].map((t) => h('th', {}, t)))),
+        h('tbody', {}, rows))), h('div', { class: 'bar' }, add), h('div', { class: 'bar' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Cerrar'))));
+  }
+  root.append(h('h2', {}, 'Colas'), flash,
+    isAdmin() ? h('div', { class: 'bar' }, h('button', { class: 'btn primary', onclick: () => formModal({
+      title: 'Nueva cola', fields: [{ n: 'code', l: 'Código', req: 1 }, { n: 'name', l: 'Nombre', req: 1 },
+        { n: 'process_id', l: 'Proceso', req: 1, type: 'select', optionsFn: () => api('GET', '/processes').then((ps) => ps.map((p) => [p.id, p.name])) },
+        { n: 'support_level', l: 'Nivel de soporte', type: 'select', str: 1, options: [['nivel0', 'nivel0'], ['nivel1', 'nivel1'], ['nivel2', 'nivel2'], ['nivel3', 'nivel3'], ['nivel4', 'nivel4']] }],
+      onSubmit: async (p) => { await api('POST', '/queues', p); say('ok', 'Cola creada.'); load(); },
+    }) }, '+ Nueva cola')) : null, list);
+  load();
+  return root;
+}
+
+// ---------------------------------------------------------------------- procesos (Grafo 2)
+function processesView() {
+  const root = h('div'); const out = h('div');
+  const sel = h('select');
+  api('GET', '/processes').then((ps) => {
+    sel.replaceChildren(...ps.map((p) => h('option', { value: p.code }, p.name)));
+    load(ps[0].code);
+  });
+  async function load(code) {
+    const g = await api('GET', `/processes/${code}/grafo`);
+    out.replaceChildren(
+      h('h3', {}, 'Estados'),
+      h('ul', {}, g.states.map((s) => h('li', {}, `${s.code} — ${s.name}` + (s.is_initial ? ' (inicial)' : '') + (s.is_final ? ' (final)' : '')))),
+      h('h3', {}, 'Transiciones (aristas del grafo)'),
+      h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Desde', 'Acción', 'Hacia', 'Permiso requerido'].map((t) => h('th', {}, t)))),
+        h('tbody', {}, g.transitions.map((t) => h('tr', {}, h('td', {}, t.from), h('td', {}, t.action), h('td', {}, t.to), h('td', {}, t.required_perm || '—')))))));
+  }
+  sel.addEventListener('change', () => load(sel.value));
+  root.append(h('h2', {}, 'Procesos — Grafo de estados y transiciones'),
+    h('p', { class: 'muted' }, 'Cada ticket solo puede avanzar por una arista existente de este grafo (ver app/workflow.py).'),
+    h('div', { class: 'bar' }, sel), out);
+  return root;
+}
+
+// -------------------------------------------------------------------------------- tickets
+const PROCESS_DETAIL_FIELDS = {
+  incidentes: [{ n: 'category', l: 'Categoría (I0–I6)', req: 1, type: 'select', str: 1, options: ['I0', 'I1', 'I2', 'I3', 'I4', 'I5', 'I6'].map((c) => [c, c]) },
+    { n: 'redundancy_available', l: '¿Existe redundancia disponible?', type: 'checkbox' }],
+  eventos: [{ n: 'category', l: 'Categoría (E0–E3)', req: 1, type: 'select', str: 1, options: ['E0', 'E1', 'E2', 'E3'].map((c) => [c, c]) }],
+  cambios: [{ n: 'change_type', l: 'Tipo de cambio', type: 'select', str: 1, options: [['normal', 'normal'], ['estandar', 'estándar'], ['emergencia', 'emergencia']] },
+    { n: 'risk_level', l: 'Nivel de riesgo' }, { n: 'test_plan', l: 'Plan de pruebas', type: 'textarea' }, { n: 'rollback_plan', l: 'Plan de reversión', type: 'textarea' }],
+  problemas: [{ n: 'root_cause', l: 'Causa raíz (si se conoce)', type: 'textarea' }],
+  accesos: [{ n: 'beneficiary_user_id', l: 'Usuario beneficiario', req: 1, type: 'select', optionsFn: () => loadOptions('/users', (u) => `${u.name} (${u.username})`) },
+    { n: 'resource', l: 'Recurso solicitado', req: 1 }, { n: 'permission_requested', l: 'Permiso solicitado' }],
+  nuevos_servicios: [{ n: 'proposed_name', l: 'Nombre del servicio propuesto', req: 1 },
+    { n: 'proposed_level1_id', l: 'Servicio de nivel 1', req: 1, type: 'select', optionsFn: () => loadOptions('/services/l1', codeName) }],
+  servicios_tecnologia: [],
+};
+
+function ticketCreateModal(onDone) {
+  // El formulario genérico (formModal) no soporta cambiar de campos dinámicamente según otro
+  // campo, así que primero se elige el proceso y luego se abre un formulario propio de ese proceso.
+  const pickProcess = h('select', {}, Object.keys(PROCESS_DETAIL_FIELDS).map((c) => h('option', { value: c }, c)));
+  const go = () => { m.close(); ticketCreateFormFor(pickProcess.value, onDone); };
+  const m = openModal('Nuevo ticket', h('div', {}, h('div', { class: 'field' }, h('label', {}, 'Proceso'), pickProcess),
+    h('div', { class: 'bar' }, h('button', { class: 'btn primary', onclick: go }, 'Continuar'), h('button', { class: 'btn', onclick: () => m.close() }, 'Cancelar'))));
+}
+
+function ticketCreateFormFor(processCode, onDone) {
+  formModal({
+    title: `Nuevo ticket — ${processCode}`,
+    fields: [
+      { n: 'title', l: 'Título', req: 1 }, { n: 'description', l: 'Descripción', type: 'textarea' },
+      { n: 'queue_id', l: 'Cola', req: 1, type: 'select', optionsFn: () => api('GET', '/queues?per_page=200').then((d) => d.items.filter((q) => q.process.code === processCode).map((q) => [q.id, `${q.code} · ${q.name}`])) },
+      { n: 'service_l2_id', l: 'Servicio (nivel 2)', req: processCode !== 'accesos' && processCode !== 'nuevos_servicios', type: 'select', optionsFn: () => loadOptions('/services/l2', codeName) },
+      { n: 'priority', l: 'Prioridad', type: 'select', str: 1, options: [['baja', 'baja'], ['media', 'media'], ['alta', 'alta']] },
+      { n: 'channel', l: 'Canal', type: 'select', str: 1, options: [['portal', 'portal'], ['telefono', 'teléfono'], ['correo', 'correo']] },
+      ...(PROCESS_DETAIL_FIELDS[processCode] || []).map((f) => ({ ...f, n: 'detail.' + f.n })),
+    ],
+    onSubmit: async (p) => {
+      const detail = {};
+      for (const k of Object.keys(p)) if (k.startsWith('detail.')) { detail[k.slice(7)] = p[k]; delete p[k]; }
+      await api('POST', '/tickets', { ...p, process_code: processCode, detail });
+      onDone();
+    },
+  });
+}
+
+function ticketsView() {
+  const root = h('div'); const flash = h('div'); const list = h('div'); let page = 1;
+  const say = (k, t) => flash.replaceChildren(msg(k, t));
+  const f = {
+    q: h('input', { type: 'search', placeholder: 'Número o título…' }),
+    state: h('input', { placeholder: 'Estado…' }),
+    priority: h('select', {}, h('option', { value: '' }, 'Prioridad: todas'), ...['baja', 'media', 'alta'].map((p) => h('option', { value: p }, p))),
+  };
+  const soloMios = h('input', { type: 'checkbox', id: 'solo-mios' });
+  async function load() {
+    try {
+      const params = { ...Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])), page, per_page: 20 };
+      if (soloMios.checked) params.requester_user_id = state.user.id;
+      const d = await api('GET', '/tickets?' + qs(params));
+      const rows = d.items.map((t) => h('tr', { class: 'clickable', onclick: () => ficha(t.id) },
+        h('td', {}, t.number), h('td', {}, t.title), h('td', {}, t.process.name), h('td', {}, t.queue.name),
+        h('td', {}, t.state), h('td', {}, t.priority), h('td', {}, t.assignee ? t.assignee.name : '—'),
+        h('td', {}, t.requester ? t.requester.name : '—'), h('td', {}, (t.created_at || '').slice(0, 16).replace('T', ' '))));
+      list.replaceChildren(h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {},
+        ['Número', 'Título', 'Proceso', 'Cola', 'Estado', 'Prioridad', 'Responsable', 'Solicitante', 'Creado'].map((t) => h('th', {}, t)))), h('tbody', {}, rows))),
+      h('div', { class: 'pager' }, h('button', { class: 'btn', disabled: page <= 1, onclick: () => { page--; load(); } }, '‹ Anterior'),
+        `Página ${d.page} de ${d.pages} · ${d.total} ticket(s)`, h('button', { class: 'btn', disabled: page >= d.pages, onclick: () => { page++; load(); } }, 'Siguiente ›')));
+    } catch (e) { list.replaceChildren(msg('error', e.message)); }
+  }
+
+  async function ficha(id) {
+    const t = await api('GET', '/tickets/' + id);
+    const graph = await api('GET', `/processes/${t.process.code}/grafo`).catch(() => ({ transitions: [] }));
+    const validActions = graph.transitions.filter((tr) => tr.from === t.state);
+    const row = (k, v) => [h('dt', {}, k), h('dd', {}, v == null || v === '' ? '—' : v)];
+    const detailRows = t.detail ? Object.entries(t.detail).map(([k, v]) => row(k, typeof v === 'object' ? JSON.stringify(v) : v)).flat() : [];
+
+    const acciones = h('div', { class: 'bar' },
+      !t.assignee ? h('button', { class: 'btn', onclick: async () => { try { await api('POST', `/tickets/${id}/tomar`); m.close(); say('ok', 'Ticket tomado.'); ficha(id); } catch (e) { say('error', e.message); } } }, 'Tomar') : null,
+      h('button', { class: 'btn', onclick: () => transferirForm(t, () => { m.close(); ficha(id); }) }, 'Transferir'),
+      ...validActions.map((tr) => h('button', { class: 'btn primary', onclick: async () => {
+        try { await api('POST', `/tickets/${id}/transicion`, { action: tr.action }); m.close(); say('ok', `Acción «${tr.action}» aplicada.`); load(); ficha(id); }
+        catch (e) { say('error', e.message); }
+      } }, tr.action)));
+
+    const comentarios = h('div', {}, t.comments.map((c) => h('div', { class: 'comment' },
+      h('b', {}, c.author ? c.author.name : '—'), ' · ', h('span', { class: 'muted' }, c.visibility), ' · ', h('span', { class: 'muted' }, (c.created_at || '').slice(0, 16).replace('T', ' ')),
+      h('p', {}, c.body))));
+    const nuevoComentario = h('textarea', { placeholder: 'Nuevo comentario…' });
+    const visibilidad = h('select', {}, h('option', { value: 'publico' }, 'Público (visible al solicitante)'), h('option', { value: 'interno' }, 'Nota interna'));
+    const enviarComentario = h('button', { class: 'btn', onclick: async () => {
+      try { await api('POST', `/tickets/${id}/comentarios`, { body: nuevoComentario.value, visibility: visibilidad.value }); m.close(); ficha(id); } catch (e) { say('error', e.message); }
+    } }, 'Agregar comentario');
+
+    const adjuntos = h('ul', {}, t.attachments.map((a) => h('li', {}, h('a', { href: `/api/tickets/${id}/adjuntos/${a.id}/descarga` }, a.filename), ` (${a.content_type}, ${a.size_bytes} bytes)`)));
+    const fileInput = h('input', { type: 'file' });
+    const subirAdjunto = h('button', { class: 'btn', onclick: async () => {
+      const file = fileInput.files[0]; if (!file) return;
+      const b64 = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.readAsDataURL(file); });
+      try { await api('POST', `/tickets/${id}/adjuntos`, { filename: file.name, content_type: file.type || 'application/octet-stream', content_base64: b64 }); m.close(); ficha(id); }
+      catch (e) { say('error', e.message); }
+    } }, 'Subir adjunto');
+
+    const m = openModal(`${t.number} · ${t.title}`, h('div', {},
+      h('dl', {}, row('Proceso', t.process.name), row('Cola', t.queue.name), row('Estado', t.state), row('Prioridad', t.priority),
+        row('Servicio', t.service_l2 && `${t.service_l2.code} · ${t.service_l2.name}`), row('Solicitante', t.requester && t.requester.name),
+        row('Responsable', t.assignee && t.assignee.name), row('Canal', t.channel), row('Descripción', t.description),
+        ...detailRows, row('Creado', t.created_at), row('Resuelto', t.resolved_at), row('Cerrado', t.closed_at)),
+      h('h3', {}, 'Acciones'), acciones,
+      h('h3', {}, 'Comentarios'), comentarios, h('div', { class: 'field' }, h('label', {}, 'Nuevo comentario'), nuevoComentario, visibilidad, enviarComentario),
+      h('h3', {}, 'Adjuntos'), adjuntos, h('div', { class: 'bar' }, fileInput, subirAdjunto),
+      h('h3', {}, 'Bitácora'), h('ul', {}, t.history.slice().reverse().map((hh) => h('li', {}, `${(hh.created_at || '').slice(0, 16).replace('T', ' ')} · ${hh.action}` + (hh.field ? ` (${hh.field})` : '') + (hh.new_value ? ` → ${hh.new_value}` : '')))),
+      h('div', { class: 'bar' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Cerrar'))));
+  }
+
+  function transferirForm(t, onDone) {
+    formModal({
+      title: `Transferir ${t.number}`,
+      fields: [{ n: 'queue_id', l: 'Cola destino', req: 1, type: 'select',
+        optionsFn: () => api('GET', '/queues?per_page=200').then((d) => d.items.filter((q) => q.process.code === t.process.code && q.id !== t.queue.id).map((q) => [q.id, `${q.code} · ${q.name}`])) },
+        { n: 'reason', l: 'Motivo' }],
+      onSubmit: async (p) => { await api('POST', `/tickets/${t.id}/transferir`, p); onDone(); },
+    });
+  }
+
+  for (const el of Object.values(f)) el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => { page = 1; load(); });
+  soloMios.addEventListener('change', () => { page = 1; load(); });
+  root.append(h('h2', {}, 'Tickets'), flash,
+    h('div', { class: 'bar' }, Object.values(f), h('label', {}, soloMios, ' Solo mis tickets (portal del solicitante)'),
+      h('span', { class: 'spacer' }), h('button', { class: 'btn primary', onclick: () => ticketCreateModal(() => load()) }, '+ Nuevo ticket')),
+    list);
+  load();
+  return root;
+}
+
+// --------------------------------------------------------------------------- tablero
+function dashboardView() {
+  const root = h('div'); const out = h('div');
+  async function load() {
+    const [resumen, ind] = await Promise.all([api('GET', '/dashboard/resumen'), api('GET', '/dashboard/indicadores')]);
+    const tbl = (obj, cols) => h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, cols.map((c) => h('th', {}, c)))),
+      h('tbody', {}, Object.entries(obj).map(([k, v]) => h('tr', {}, h('td', {}, k), h('td', {}, v))))));
+    const resumenTbl = h('div', { class: 'table-wrap' }, h('table', {}, h('tbody', {},
+      h('tr', {}, h('td', {}, 'Total de tickets'), h('td', {}, resumen.total)),
+      h('tr', {}, h('td', {}, 'Abiertos'), h('td', {}, resumen.abiertos)),
+      h('tr', {}, h('td', {}, 'Antigüedad promedio (h, abiertos)'), h('td', {}, ind.antiguedad_horas_promedio_abiertos ?? '—')),
+      h('tr', {}, h('td', {}, 'Primera atención promedio (h)'), h('td', {}, ind.primera_atencion_horas_promedio ?? '—')),
+      h('tr', {}, h('td', {}, 'Resolución promedio (h)'), h('td', {}, ind.resolucion_horas_promedio ?? '—')),
+      h('tr', {}, h('td', {}, 'Cumplimiento de objetivo'), h('td', {}, ind.cumplimiento_objetivo_pct != null ? ind.cumplimiento_objetivo_pct + '%' : '—')),
+      h('tr', {}, h('td', {}, 'Tiempo usado para los cálculos'), h('td', {}, ind.tiempo)))));
+    out.replaceChildren(
+      h('div', { class: 'bar' }, resumenTbl),
+      h('h3', {}, 'Por estado'), tbl(resumen.por_estado, ['Estado', 'Tickets']),
+      h('h3', {}, 'Por prioridad'), tbl(resumen.por_prioridad, ['Prioridad', 'Tickets']),
+      h('h3', {}, 'Por cola'), tbl(resumen.por_cola, ['Cola', 'Tickets']),
+      h('h3', {}, 'Por proceso'), tbl(resumen.por_proceso, ['Proceso', 'Tickets']));
+  }
+  root.append(h('h2', {}, 'Tablero de indicadores'),
+    h('p', { class: 'muted' }, 'Cálculo de cada indicador documentado en app/api/dashboard.py y docs/PROCESOS.md.'), out);
+  load();
+  return root;
+}
+
+// ------------------------------------------------------------------------------- FAQ (nivel 0)
+const FAQ = [
+  ['¿Cómo reinicio mi contraseña?', 'Solicite un acceso (proceso "Gestión de accesos") indicando el recurso "Contraseña de usuario"; un aprobador autorizado la restablecerá.'],
+  ['¿Cómo reporto una falla?', 'Cree un ticket del proceso "Gestión de incidentes" desde Tickets → Nuevo ticket, indicando el servicio afectado y la categoría (I0–I6) según la interrupción.'],
+  ['¿Qué diferencia hay entre un incidente y un problema?', 'Un incidente es una interrupción puntual; un problema es la causa raíz detrás de uno o varios incidentes repetidos.'],
+  ['¿Cómo solicito un servicio nuevo?', 'Use el proceso "Gestión de nuevos servicios"; se analiza viabilidad antes de aprobarse y crear o vincular el servicio en el catálogo.'],
+  ['¿Dónde veo mis tickets?', 'En Tickets, active la casilla "Solo mis tickets" (portal del solicitante).'],
+];
+function faqView() {
+  return h('div', {}, h('h2', {}, 'Base de conocimiento / FAQ (nivel 0 — autoservicio)'),
+    h('p', { class: 'muted' }, 'Autoservicio simple; no requiere crear un ticket para resolver estas dudas comunes.'),
+    h('div', {}, FAQ.map(([q, a]) => h('details', {}, h('summary', {}, q), h('p', {}, a)))));
+}
+
 // -------------------------------------------------------------------------------- shell
 const VIEWS = [
   ['services', 'Servicios', servicesView, false], ['l1', 'Nivel 1', () => crudView(L1CFG), false],
@@ -312,6 +635,14 @@ const VIEWS = [
   ['positions', 'Puestos', () => crudView(ORG.positions), false], ['users', 'Usuarios', () => crudView(ORG.users), false],
   ...CATALOGS.map(([k, t]) => ['cat_' + k, t, () => crudView(catalogCfg(k, t)), false]),
   ['import', 'Importación', importView, false],
+  ['faq', 'FAQ', faqView, false],
+  ['tickets', 'Tickets', ticketsView, false],
+  ['dashboard', 'Tablero', dashboardView, false],
+  ['processes', 'Procesos', processesView, false],
+  ['queues', 'Colas', queuesView, false],
+  ['devices', 'CMDB — Dispositivos', devicesView, false],
+  ['ci_classes', 'CMDB — Clases', () => crudView(CICLASSES_CFG), false],
+  ['locations', 'CMDB — Ubicaciones', () => crudView(LOCATIONS_CFG), false],
 ];
 
 function loginView() {

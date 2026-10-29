@@ -40,3 +40,7 @@ dt { color:var(--muted); } dd { margin:0; overflow-wrap:anywhere; }
 pre { background:#f6f7f9; padding:.6rem; border-radius:6px; overflow:auto; font-size:.8rem; }
 .login { max-width:360px; margin:12vh auto; background:#fff; padding:1.5rem; border:1px solid var(--line); border-radius:10px; }
 .spacer { flex:1; } .muted { color:var(--muted); }
+.comment { border-bottom:1px solid var(--line); padding:.4rem 0; }
+.comment p { margin:.2rem 0 0; }
+details { background:#fff; border:1px solid var(--line); border-radius:8px; padding:.5rem .8rem; margin-bottom:.5rem; }
+details summary { cursor:pointer; font-weight:600; }
