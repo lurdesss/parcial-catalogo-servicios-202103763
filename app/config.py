@@ -19,3 +19,4 @@ class Config:
     SESSION_HOURS = int(os.environ.get("SESSION_HOURS", "8"))
     CATALOG_XLSX = os.environ.get("CATALOG_XLSX", "data/CatalogoServicios.xlsx")
     IMPORT_MAPPING = os.environ.get("IMPORT_MAPPING", "data/mapeo_importacion.json")
+    ATTACHMENTS_DIR = os.environ.get("ATTACHMENTS_DIR", "uploads")  # escribible; data/ se monta :ro
