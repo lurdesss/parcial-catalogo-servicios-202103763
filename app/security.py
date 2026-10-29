@@ -14,6 +14,10 @@ MIN_PASSWORD = 8
 _DUMMY_HASH = generate_password_hash("dummy-password-for-timing")
 PUBLIC_ENDPOINTS = {"auth.login", "health"}
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
+# Blueprints de Parcial 3 cuyas vistas autorizan sus propias escrituras (queue_permission /
+# reglas de proceso) en vez del "solo admin" de Parcial 2. Todo lo demás (org, catálogos,
+# CMDB, colas) sigue exigiendo rol admin para escribir, igual que antes.
+SELF_AUTH_BLUEPRINTS = {"tickets"}
 
 
 def hash_password(password: str) -> str:
@@ -80,7 +84,8 @@ def _load_session():
 
 
 def guard_request():
-    """Política por defecto: todo /api exige sesión; todo método de escritura exige rol admin y CSRF."""
+    """Política por defecto: todo /api exige sesión; todo método de escritura exige CSRF y,
+    salvo en SELF_AUTH_BLUEPRINTS, rol admin (igual que el Parcial 2)."""
     if not request.path.startswith("/api/") or request.endpoint in PUBLIC_ENDPOINTS:
         return None
     user, us = _load_session()
@@ -91,6 +96,36 @@ def guard_request():
         sent = request.headers.get("X-CSRF-Token", "")
         if not hmac.compare_digest(sent, us.csrf_token):
             raise ApiError(403, "csrf", "Token CSRF inválido o ausente.")
-        if request.endpoint != "auth.logout" and user.role != "admin":
+        bp = (request.endpoint or "").split(".")[0]
+        if request.endpoint != "auth.logout" and user.role != "admin" and bp not in SELF_AUTH_BLUEPRINTS:
             raise ApiError(403, "forbidden", "Su rol no permite modificar datos.")
     return None
+
+
+# ------------------------------------------------------------- Parcial 3: roles y colas
+def service_role_codes(user):
+    """Roles funcionales de Service Desk del usuario (además de su rol base admin/consulta)."""
+    return {r.role_code for r in user.service_roles}
+
+
+def has_service_role(user, code):
+    return code in service_role_codes(user)
+
+
+def queue_permission(user, queue, perm):
+    """perm en {'view','work','transfer','approve','manage'}. admin tiene control total siempre
+    (igual que en el resto del sistema); el resto se evalúa por rol o por usuario en queue_permissions."""
+    if user.role == "admin":
+        return True
+    principal_codes = {user.role} | service_role_codes(user)
+    attr = f"can_{perm}"
+    for p in queue.permissions:
+        matches = p.principal_user_id == user.id or (p.principal_role and p.principal_role in principal_codes)
+        if matches and getattr(p, attr):
+            return True
+    return False
+
+
+def require_queue_perm(user, queue, perm, message=None):
+    if not queue_permission(user, queue, perm):
+        raise ApiError(403, "forbidden", message or "No tiene permiso sobre esta cola para esta acción.")
