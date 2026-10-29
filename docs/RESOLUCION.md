@@ -168,10 +168,27 @@ la política de apagado/reinicio normal vs. destructivo.
   preparado para agregar otras sin cambiar el modelo.
 - El tablero de indicadores calcula promedios en Python sobre el resultado de la consulta (no agregados SQL), lo que
   es apropiado al volumen de tickets esperado pero no escalaría igual de bien que la CMDB (que sí pagina en SQL).
-- Aportes del integrante: `COMPLETAR`.
-- Reflexión: tres hallazgos reales de datos/validación (ver `docs/evidencias/harness-ciclo-05..07.md`) muestran que
-  el código generado por la IA puede ser funcionalmente razonable pero pasar por alto una restricción específica del
-  dominio (un proceso cuyo servicio aún no existe, un actor sin el permiso exacto para un paso puntual) hasta que se
-  ejecuta de verdad contra datos reales — ninguno se habría detectado solo leyendo el código. Decisión humana
-  deliberada: cuando dos fuentes no alcanzaban para un requisito (jerarquía CMDB), se prefirió preguntar y documentar
-  el vacío en vez de dejar que la IA completara con una clasificación inventada y la presentara como verificada.
+- **Aportes del integrante (Jennifer Yulissa Lourdes Taperio Manuel, 202103763):**
+  - Definió el alcance real de la tarea (qué del Parcial 2 se conservaba sin tocar, dónde construir Parcial 3) y
+    aprobó el plan de implementación antes de que se escribiera código.
+  - Detectó y resolvió el bloqueo central del proyecto: cuando la IA reportó que ni `CMDB.xlsx` ni
+    `Service Desk.pptx.pdf` traían una jerarquía de CI verificable, fue quien aportó `Transicion.pptx.pdf` y aclaró
+    que la "lección 22" del enunciado no era un documento aparte, sino el espacio de clase donde se presentó
+    `CMDB.xlsx` — sin esa aclaración, el modelo de CMDB se habría quedado sin una fuente que citar.
+  - Decidió explícitamente la política de commits (puntos lógicos, con su propia identidad de Git, sin atribución de
+    coautoría a la IA) y la ejecución real del harness de Docker en su propio equipo, que fue lo que expuso los dos
+    fallos del ciclo 08 (ninguno se habría visto solo con SQLite local).
+  - Revisó y aprobó cada hito antes de continuar al siguiente (modelo, seguridad, API, pruebas, frontend,
+    documentación), y cerró la entrega creando la etiqueta `parcial-v3.0` sobre el commit final.
+- **Reflexión:** el patrón que más se repitió en esta sesión fue que el código generado por la IA era funcionalmente
+  razonable pero fallaba en una restricción puntual del dominio —un proceso cuyo servicio aún no existe
+  (`nuevos_servicios`), un actor sin el permiso exacto para un paso de una secuencia (`seed_servicedesk.py`), un
+  control de humo que asumía una invariante que Parcial 3 rompe a propósito (el catálogo si puede crecer)— y en
+  ningún caso se habría detectado solo leyendo el código: los cuatro ciclos de harness (05–08) surgieron todos de
+  ejecutar los comandos de verdad, primero en local y después, de forma decisiva, contra Docker/PostgreSQL real. La
+  decisión humana más importante no fue de código sino de criterio: cuando dos fuentes no alcanzaban para un
+  requisito explícito del enunciado (la jerarquía de la CMDB), se prefirió detenerse, preguntar y documentar el
+  vacío como decisión de proyecto, en vez de dejar que la IA completara con una clasificación inventada y la
+  presentara como si viniera de una fuente verificada. Esa misma lógica —preferir un "no se puede verificar" bien
+  documentado a un dato inventado— es la que sostiene el resto de las decisiones registradas en
+  `docs/contexto/04-parcial3-alcance.md`.

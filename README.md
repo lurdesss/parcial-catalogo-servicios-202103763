@@ -5,7 +5,7 @@ organizacional y autenticación local (**Parcial 2**), ampliada con un **Service
 procesos ITIL) y una **CMDB** con ≥5000 dispositivos sintéticos reproducibles (**Parcial 3**), sobre el mismo
 repositorio y base de datos.
 
-- **Integrante:** `COMPLETAR nombre` · **Carné:** `202103763`
+- **Integrante:** Jennifer Yulissa Lourdes Taperio Manuel · **Carné:** `202103763`
 - **Catedrático (GitHub):** `maldanap-usac` · **Etiquetas de entrega:** `parcial-v2.0` (Parcial 2) · `parcial-v3.0` (Parcial 3)
 
 ## Requisitos
