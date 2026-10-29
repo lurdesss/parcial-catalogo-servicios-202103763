@@ -1,13 +1,37 @@
-# RESOLUCIÓN — Catálogo de Servicios de TI
+# RESOLUCIÓN — Catálogo de Servicios de TI + Service Desk y CMDB (Parcial 2 + Parcial 3)
 
-> Estado: las pruebas se ejecutaron con el **Excel real**, primero en un sandbox sin Docker (SQLite y PostgreSQL 16 con apt) y el 2026-10-04 también con **Docker** (Docker 29.7.2, Compose v5.4.0, Windows 11): servicio `tests`, `smoke.py flow` y `persistence_check.sh` salieron con código 0 (§8).
+> Estado Parcial 2: las pruebas se ejecutaron con el **Excel real**, primero en un sandbox sin Docker (SQLite y PostgreSQL 16 con apt) y el 2026-10-04 también con **Docker** (Docker 29.7.2, Compose v5.4.0, Windows 11): servicio `tests`, `smoke.py flow` y `persistence_check.sh` salieron con código 0 (§8).
+>
+> Estado Parcial 3 (2026-10-29): suite completa verificada en local sin Docker (`pytest -q` → 58 passed, `ruff check .`
+> → sin errores) y los comandos nuevos (`generate-cmdb`, `seed-servicedesk-demo`) verificados de forma real y
+> repetida (idempotencia confirmada con conteos de base de datos). **La verificación con Docker quedó pendiente**
+> porque el daemon no estaba activo durante la construcción — ver `docs/PRUEBAS.md` §3 para el detalle y los comandos
+> exactos a ejecutar antes de la entrega.
 
 ## 1. Problema, alcance y supuestos
+
+### Parcial 2
 Sistematizar el catálogo del Excel y añadir usuarios y estructura organizacional con autenticación local. Sin tickets, facturación ni consumo.
 Supuestos: la jerarquía es fija (Empresa→Área→Departamento→Sección→Puesto→Usuario); el padre de una unidad no se cambia; el importador es la fuente de verdad solo de los campos del Excel; las reglas del importador se diseñaron desde el enunciado y se verificaron después contra el archivo real (`docs/contexto/02-analisis-excel.md`).
 
+### Parcial 3 (ampliación, sobre el mismo repositorio)
+Agregar una CMDB con ≥5000 dispositivos sintéticos reproducibles y un Service Desk completo (tickets, colas, 7
+procesos ITIL) sin romper nada de lo ya calificado de Parcial 2. Supuestos y decisiones de diseño documentados en
+`docs/contexto/04-parcial3-alcance.md` (resumen: roles funcionales aditivos sobre `users.role`; jerarquía de
+clasificación de CI declarada como decisión de proyecto porque ninguna fuente la define por completo; categoría I2
+por defecto para incidentes auto-creados desde eventos E2/E3; sin pausas explícitas de SLA). Alcance detallado del
+modelo y los procesos en `docs/MODELO.md` y `docs/PROCESOS.md` (no se repiten aquí para evitar desincronización).
+
 ## 2. Arquitectura y tecnologías
 Flask 3 + SQLAlchemy 2 + Alembic + PostgreSQL 16 + gunicorn; SPA en JavaScript puro servida por Flask; Docker Compose (db, app; perfiles `test` y `ui`). Elegidas por simplicidad, cero dependencias de IA/terceros en ejecución y reproducibilidad. Autorización centralizada en `app/security.py::guard_request` (defecto-denegar).
+
+**Parcial 3** no cambia la pila: mismas tecnologías, mismo patrón arquitectónico (lógica en módulos de `app/`, capa
+HTTP delgada en `app/api/*.py`, igual que `app/importer.py`+`app/api/imports.py`). Módulos nuevos:
+`app/ticket_engine.py` (motor de tickets y reglas por proceso), `app/workflow.py` (Grafo 2: estados/transiciones),
+`app/graph_cmdb.py` (Grafo 1: dependencias y ciclos entre CI), `app/cmdb_generator.py` (generador reproducible),
+`app/reference_data.py` (única fuente de los datos estructurales: 7 procesos + su grafo, jerarquía de CI,
+ubicaciones — la usan tanto la migración como las pruebas). Sin dependencias nuevas en `requirements.txt`: el
+generador de CMDB usa solo `random.Random(seed)`, sin Faker ni IA.
 
 ## 3. Modelo de datos
 ```mermaid
@@ -50,13 +74,22 @@ Reporte: `import_runs` (creados/actualizados/omitidos/observados, N1/N2, control
 ## 5. Autenticación y autorización
 Hash scrypt con sal (Werkzeug); sesión en servidor (tabla `user_sessions`), cookie firmada HttpOnly/SameSite=Lax con solo el token; logout y desactivación de usuario invalidan la sesión; CSRF por cabecera `X-CSRF-Token`; verificación de contraseña en tiempo constante frente a usuarios inexistentes; admin no puede desactivarse ni quitarse el rol si es el último.
 
-## 6. Evidencias de las tres técnicas
-- Context engineering: `AGENTS.md`, `docs/contexto/` (índice por fase, 2 actualizaciones justificadas en `CAMBIOS.md`).
-- Prompt engineering: `docs/prompts/` — se usaron realmente todos los prompts (01, 03, 04, 05a→05b, 06, 07a→07b), con herramienta, fecha, comprobación y decisión en cada archivo.
-- Harness engineering: `docs/evidencias/harness-ciclo-01..03.md`, `scripts/check.sh`, `smoke.py`, `persistence_check.sh`, límites en AGENTS.md §3.
-Commits: el historial de Git del repositorio (`git log`); el desarrollo no se versionó por fase, por lo que no hay un commit por cada versión del contexto.
+**Parcial 3:** sin cambios en lo anterior. Se agregan roles funcionales aditivos (`solicitante`/`agente`/`aprobador`,
+tabla `user_service_roles`) y autorización granular por cola (`queue_permissions`) para el blueprint de tickets
+únicamente; el resto de la API sigue exigiendo `admin` para escribir, igual que antes. Detalle y justificación de
+diseño en `docs/PROCESOS.md` §1 y `docs/contexto/CAMBIOS.md` v7.
+
+## 6. Evidencias de las cuatro técnicas (Parcial 2: tres; Parcial 3 agrega Loop Engineering)
+- Context engineering: `AGENTS.md`, `docs/contexto/` — 2 actualizaciones de Parcial 2 (`CAMBIOS.md` v1–v5) + 3 de
+  Parcial 3 (v6–v8, con commits reales `468f563`/`3a8127c`/`8eb3d95`).
+- Prompt engineering: `docs/prompts/` — prompts 01–07b (Parcial 2) + 08–15 (Parcial 3, 8 temas, 2 mejoras).
+- Harness engineering: `docs/evidencias/harness-ciclo-01..04.md` (Parcial 2) + ampliación de comandos para
+  CMDB/Service Desk (`AGENTS.md` §4).
+- Loop engineering (nuevo en Parcial 3): `docs/evidencias/harness-ciclo-05..07.md` — ver detalle y commits en `docs/IA.md` §4.
+Consolidado completo de Parcial 3 con enlaces a commits: `docs/IA.md`.
 
 ## 7. Matriz requisito → implementación → prueba
+Tabla de Parcial 2 (P01–P12 de ese enunciado) sin cambios:
 
 | Req. | Implementación | Prueba | Tipo |
 |---|---|---|---|
@@ -74,6 +107,11 @@ Commits: el historial de Git del repositorio (`git log`); el desarrollo no se ve
 | P12 persistencia | volumen `pgdata` | `test_persistence` (en proceso) + `persistence_check.sh` (Docker) | integración / E2E |
 | UI | `static/app.js` | `tests/ui/ui_smoke.js` | E2E (jsdom) |
 | Migraciones | Alembic | `test_migrations` | integración |
+
+**Parcial 3 (P03–P18 de ese enunciado, numeración propia):** matriz completa en `docs/PRUEBAS.md` §1, con los mismos
+identificadores P03–P18 del enunciado de Parcial 3 (nota: P12 de Parcial 2 y P18 de Parcial 3 son ambos pruebas de
+persistencia, pero con número distinto porque pertenecen a enunciados distintos; `tests/test_persistence.py` ahora
+implementa la versión P18 ampliada, que incluye a la anterior).
 
 ## 8. Resultados reales de pruebas
 
@@ -95,14 +133,41 @@ Commits: el historial de Git del repositorio (`git log`); el desarrollo no se ve
 
 Nota de commit: las ejecuciones se hicieron sobre el árbol de trabajo publicado en el primer commit completo del repositorio (posterior a `32df9b4`, que solo contenía el README); no hubo commits intermedios por fase. El fallo de `smoke.py` se debió al orden de ejecución (requiere `setup_eval.sh` antes) y está documentado en `docs/evidencias/harness-ciclo-04.md`.
 
-Fallos encontrados y corregidos: `docs/evidencias/harness-ciclo-01..03.md`.
+Fallos encontrados y corregidos: `docs/evidencias/harness-ciclo-01..03.md` (Parcial 2) y
+`docs/evidencias/harness-ciclo-05..07.md` (Parcial 3). Resultados reales de Parcial 3 (pytest, ruff, CLI del
+generador de CMDB y de la siembra de Service Desk, con fechas y commits): `docs/PRUEBAS.md` §2. **Verificación con
+Docker pendiente** antes de la entrega — comandos exactos en `docs/PRUEBAS.md` §3.
 
 ## 9. Docker, persistencia y recuperación
 Ver README. Volumen `pgdata`; `docker compose down` conserva datos; `down -v` es el reinicio destructivo. El arranque espera a PostgreSQL (healthcheck + `depends_on: service_healthy` + reintentos de migración). El Excel se monta `:ro`.
 
+**Parcial 3** agrega el volumen `uploads_data` (adjuntos de tickets, escribible; `data/` sigue montado `:ro` y sin
+cambios) y los comandos `flask generate-cmdb`/`flask seed-servicedesk-demo` a `scripts/setup_eval.sh`. Sin cambios en
+la política de apagado/reinicio normal vs. destructivo.
+
 ## 10. Limitaciones, aportes y reflexión
+
+### Parcial 2
 - Docker verificado el 2026-10-04 (§8). No se ejecutaron `ui_tests` en Docker ni la prueba de clon limpio desde la etiqueta.
 - No se admite reasignar el padre de una unidad; la paginación del selector de usuarios/secciones llega a 500 registros.
 - Sin recuperación de contraseña ni bloqueo por intentos fallidos.
+- Reflexión: la IA produjo código funcional pero sus propias pruebas contenían una expectativa errónea (ciclo 01); un bug de DOM solo apareció al ejecutar la interfaz (ciclo 02) y un bloqueo solo en PostgreSQL (ciclo 03). Decisiones humanas: no inventar el contenido del Excel, bajas lógicas con cascada explícita y tratar el texto del Excel como dato no confiable.
+
+### Parcial 3
+- **Verificación con Docker pendiente** (daemon inactivo durante la construcción; sí instalado). Es la limitación
+  más importante a resolver antes de entregar — ver `docs/PRUEBAS.md` §3.
+- Sin pausas explícitas de SLA en el tablero de indicadores (decisión documentada en `docs/PROCESOS.md` §5); el
+  tiempo de resolución se mide de extremo a extremo.
+- La jerarquía de clasificación de CI es una decisión de proyecto (ninguna fuente entregada la define por completo),
+  documentada con su razonamiento completo en `docs/contexto/05-cmdb-jerarquia.md`.
+- La regla de ordenamiento de colas (`priority_then_age`) es la única implementada; el campo `ordering_rule` queda
+  preparado para agregar otras sin cambiar el modelo.
+- El tablero de indicadores calcula promedios en Python sobre el resultado de la consulta (no agregados SQL), lo que
+  es apropiado al volumen de tickets esperado pero no escalaría igual de bien que la CMDB (que sí pagina en SQL).
 - Aportes del integrante: `COMPLETAR`.
-- Reflexión (borrador a revisar con sus palabras): la IA produjo código funcional pero sus propias pruebas contenían una expectativa errónea (ciclo 01); un bug de DOM solo apareció al ejecutar la interfaz (ciclo 02) y un bloqueo solo en PostgreSQL (ciclo 03). Decisiones humanas: no inventar el contenido del Excel, bajas lógicas con cascada explícita y tratar el texto del Excel como dato no confiable.
+- Reflexión: tres hallazgos reales de datos/validación (ver `docs/evidencias/harness-ciclo-05..07.md`) muestran que
+  el código generado por la IA puede ser funcionalmente razonable pero pasar por alto una restricción específica del
+  dominio (un proceso cuyo servicio aún no existe, un actor sin el permiso exacto para un paso puntual) hasta que se
+  ejecuta de verdad contra datos reales — ninguno se habría detectado solo leyendo el código. Decisión humana
+  deliberada: cuando dos fuentes no alcanzaban para un requisito (jerarquía CMDB), se prefirió preguntar y documentar
+  el vacío en vez de dejar que la IA completara con una clasificación inventada y la presentara como verificada.
