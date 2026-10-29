@@ -72,17 +72,47 @@ def flow():
     st, page = a.call("GET", "/api/services/l2?per_page=1")
     check("catálogo consultable", st == 200 and page["total"] == run2["n2_codes"], str(page.get("total")))
 
+    # --- Parcial 3: Service Desk / CMDB -------------------------------------------------
+    st, procesos = a.call("GET", "/api/processes")
+    check("7 procesos disponibles", st == 200 and len(procesos) == 7, str(procesos))
+    st, devices = a.call("GET", "/api/cmdb/devices?per_page=1")
+    check("CMDB consultable (>=5000 dispositivos tras setup_eval.sh)", st == 200, str(devices.get("total")))
+    st, tickets = a.call("GET", "/api/tickets?per_page=1")
+    check("tickets consultables (>=35 tras setup_eval.sh)", st == 200, str(tickets.get("total")))
+    st, ind = a.call("GET", "/api/dashboard/indicadores")
+    check("indicadores del tablero responden", st == 200, str(ind))
+
 
 def marker_write():
     a = admin()
     st, body = a.call("POST", "/api/org/companies", {"code": "PERSISTENCIA", "name": "Registro de prueba de persistencia"})
-    check("marcador creado o ya existente", st in (201, 409), str(body))
+    check("marcador de organización creado o ya existente", st in (201, 409), str(body))
+    st, classes = a.call("GET", "/api/cmdb/ci-classes?q=HW.SRV")
+    cls_id = classes["items"][0]["id"] if st == 200 and classes["items"] else None
+    check("clase de CI disponible para el marcador", cls_id is not None, str(classes))
+    st, dev = a.call("POST", "/api/cmdb/devices", {"asset_tag": "CI-PERSISTENCIA", "name": "Marcador CMDB", "ci_class_id": cls_id})
+    check("marcador de CMDB creado o ya existente", st in (201, 409), str(dev))
+    st, procesos = a.call("GET", "/api/processes")
+    proc = next((p for p in procesos if p["code"] == "incidentes"), None) if st == 200 else None
+    st, queues = a.call("GET", "/api/queues?q=Q-PERSISTENCIA")
+    if st == 200 and queues["items"]:
+        qid = queues["items"][0]["id"]
+    else:
+        st, q = a.call("POST", "/api/queues", {"code": "Q-PERSISTENCIA", "name": "Marcador", "process_id": proc["id"]})
+        qid = q.get("id")
+    st, tk = a.call("POST", "/api/tickets", {"process_code": "incidentes", "title": "Marcador de persistencia",
+                                             "queue_id": qid, "detail": {"category": "I0"}})
+    check("marcador de ticket creado o ya existente", st in (201, 409), str(tk))
 
 
 def marker_verify():
     a = admin()
     st, body = a.call("GET", "/api/org/companies?q=PERSISTENCIA")
-    check("el marcador sobrevivió al reinicio", st == 200 and body["total"] >= 1, str(body))
+    check("el marcador de organización sobrevivió al reinicio", st == 200 and body["total"] >= 1, str(body))
+    st, dev = a.call("GET", "/api/cmdb/devices?q=CI-PERSISTENCIA")
+    check("el marcador de CMDB sobrevivió al reinicio", st == 200 and dev["total"] >= 1, str(dev))
+    st, tk = a.call("GET", "/api/tickets?q=Marcador+de+persistencia")
+    check("el marcador de ticket sobrevivió al reinicio", st == 200 and tk["total"] >= 1, str(tk))
 
 
 if __name__ == "__main__":
