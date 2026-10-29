@@ -2,14 +2,17 @@ import os
 
 import pytest
 
-from app import create_app
+from app import create_app, reference_data
 from app.extensions import db
-from app.models import Area, Company, Department, Position, Section, User
+from app.models import Area, Company, Department, Position, Section, User, UserServiceRole
 from app.security import hash_password
 from tests.synthetic_xlsx import build
 
 ADMIN = ("admin_test", "Admin-Pass-123")
 VIEWER = ("viewer_test", "Viewer-Pass-123")
+SOLICITANTE = ("solicitante_test", "Solicitante-Pass-123")
+AGENTE = ("agente_test", "Agente-Pass-123")
+APROBADOR = ("aprobador_test", "Aprobador-Pass-123")
 
 
 @pytest.fixture()
@@ -17,10 +20,12 @@ def app(tmp_path):
     uri = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{tmp_path / 'test.db'}"
     xlsx = build(tmp_path / "sintetico.xlsx")
     app = create_app({"TESTING": True, "SECRET_KEY": "test-secret", "SQLALCHEMY_DATABASE_URI": uri,
-                      "CATALOG_XLSX": str(xlsx), "IMPORT_MAPPING": "data/mapeo_importacion.json"})
+                      "CATALOG_XLSX": str(xlsx), "IMPORT_MAPPING": "data/mapeo_importacion.json",
+                      "ATTACHMENTS_DIR": str(tmp_path / "uploads")})
     with app.app_context():
         db.drop_all()
         db.create_all()
+        reference_data.seed_orm()
         yield app
         db.session.remove()
         db.drop_all()
@@ -70,9 +75,16 @@ def org(app):
     db.session.add_all([p1, p2]); db.session.flush()
     adm = User(name="Admin", username=ADMIN[0], role="admin", position_id=p1.id, password_hash=hash_password(ADMIN[1]))
     view = User(name="Viewer", username=VIEWER[0], role="consulta", position_id=p2.id, password_hash=hash_password(VIEWER[1]))
-    db.session.add_all([adm, view]); db.session.commit()
+    sol = User(name="Solicitante", username=SOLICITANTE[0], role="consulta", position_id=p2.id, password_hash=hash_password(SOLICITANTE[1]))
+    age = User(name="Agente", username=AGENTE[0], role="consulta", position_id=p1.id, password_hash=hash_password(AGENTE[1]))
+    apr = User(name="Aprobador", username=APROBADOR[0], role="consulta", position_id=p1.id, password_hash=hash_password(APROBADOR[1]))
+    db.session.add_all([adm, view, sol, age, apr]); db.session.flush()
+    db.session.add_all([UserServiceRole(user_id=sol.id, role_code="solicitante"),
+                        UserServiceRole(user_id=age.id, role_code="agente"),
+                        UserServiceRole(user_id=apr.id, role_code="aprobador")])
+    db.session.commit()
     return {"company": c.id, "area": a.id, "dept": d.id, "s1": s1.id, "s2": s2.id, "p1": p1.id, "p2": p2.id,
-            "admin": adm.id, "viewer": view.id}
+            "admin": adm.id, "viewer": view.id, "solicitante": sol.id, "agente": age.id, "aprobador": apr.id}
 
 
 @pytest.fixture()
@@ -92,3 +104,24 @@ def viewer(app, org):
 @pytest.fixture()
 def anon(app):
     return Client(app)
+
+
+@pytest.fixture()
+def solicitante(app, org):
+    cl = Client(app)
+    assert cl.login(SOLICITANTE).status_code == 200
+    return cl
+
+
+@pytest.fixture()
+def agente(app, org):
+    cl = Client(app)
+    assert cl.login(AGENTE).status_code == 200
+    return cl
+
+
+@pytest.fixture()
+def aprobador(app, org):
+    cl = Client(app)
+    assert cl.login(APROBADOR).status_code == 200
+    return cl
